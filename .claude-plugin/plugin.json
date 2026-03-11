@@ -1,0 +1,17 @@
+{
+  "name": "pr-stack",
+  "version": "1.0.0",
+  "description": "Plan and implement features as stacks of small, focused PRs using TDD with git-town branch management",
+  "author": {
+    "name": "Derek Shockey"
+  },
+  "homepage": "https://github.com/derekspelledcorrectly/claude-pr-stack-plugin",
+  "license": "MIT",
+  "keywords": [
+    "pr-stacking",
+    "tdd",
+    "git-town",
+    "workflow",
+    "code-review"
+  ]
+}

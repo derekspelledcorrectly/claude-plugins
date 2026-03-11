@@ -1,0 +1,17 @@
+{
+  "name": "claude-pr-stack-plugin",
+  "description": "PR stacking plugin marketplace",
+  "owner": {
+    "name": "Derek Shockey"
+  },
+  "plugins": [
+    {
+      "name": "pr-stack",
+      "source": {
+        "source": "github",
+        "repo": "derekspelledcorrectly/claude-pr-stack-plugin"
+      },
+      "description": "Plan and implement features as stacks of small, focused PRs using TDD with git-town branch management"
+    }
+  ]
+}
