@@ -57,12 +57,54 @@ Draft the Architecture section:
 
 If missing:
 1. Detect project tech stack (package.json, Cargo.toml, go.mod, pyproject.toml, etc.)
-2. Create from template at `${CLAUDE_PLUGIN_ROOT}/templates/stack-workflow-template.md`
-3. Pre-populate with appropriate commands for detected stack
-4. Ask user to confirm/customize
-5. Write to repo root
+2. Create from the workflow template below, pre-populated with appropriate commands for the detected stack
+3. Ask user to confirm/customize
+4. Write to repo root
 
 Required sections: Early Iteration Check, Pre-Commit Check, Pre-PR Check (optional).
+
+**Workflow Template**:
+
+```markdown
+# PR Stacking Workflow - Local Configuration
+
+**IMPORTANT**: This file is local to your repository and should never be committed to git.
+
+The implementation agent uses context-aware selection to choose which section to run:
+- **Early Iteration Check**: Fast validation during active development (<10s)
+- **Pre-Commit Check**: Comprehensive validation before creating a commit
+- **Pre-PR Check** (optional): Final validation before proposing the PR
+
+Commands are listed as bullet points. Use `&&` to chain commands that must run together.
+
+## Early Iteration Check
+
+Quick validation during active development. Runs after writing tests or implementation.
+
+**For this project**:
+- `command-here`
+
+## Pre-Commit Check
+
+Thorough validation before creating a commit. All checks must pass.
+
+**For this project**:
+- `command-here`
+
+## Pre-PR Check (Optional)
+
+Final comprehensive validation before proposing the PR. Delete this section if not needed.
+
+**For this project**:
+- `command-here`
+```
+
+**Common tech stack commands** (use these to pre-populate):
+- **Deno**: fmt: `deno fmt`, check: `deno fmt && deno task check`, full: `deno task check:full`
+- **Node**: fmt: `npm run format && npm run lint`, check: `npm run format && npm run lint && npm run type-check && npm test`, full: `npm run test:integration && npm run test:e2e`
+- **Python**: fmt: `black . && ruff check .`, check: `black . && ruff check . && mypy . && pytest`, full: `pytest --cov && safety check`
+- **Go**: fmt: `go fmt ./... && go vet ./...`, check: `go fmt ./... && go vet ./... && go test ./...`, full: `go test -race ./... && staticcheck ./...`
+- **Rust**: fmt: `cargo fmt && cargo clippy`, check: `cargo fmt && cargo clippy && cargo test`, full: `cargo test --all-features && cargo audit`
 
 **DO NOT proceed to Step 4 until workflow configuration is confirmed.**
 
@@ -110,15 +152,84 @@ When the plan is solid:
 2. Ensure STACK-*.md is in .git/info/exclude
 3. Summarize what was created
 
-**STACK File Format Reference**: See `${CLAUDE_PLUGIN_ROOT}/templates/STACK-EXAMPLE.md`
+**STACK File Format Reference**:
 
-Required STACK sections:
-- **Overview**: 1-2 sentence summary
-- **Goals & Success Criteria**
-- **Architecture & Design Decisions**: With SECURITY/DEVOPS/DESIGN inline notes
-- **File Existence Validation**: Verified paths with timestamp
-- **PR Breakdown**: Each PR with all fields above
-- **Implementation Notes**: Gotchas and edge cases
+```markdown
+# STACK-[FEATURE]
+
+## Overview
+1-2 sentence summary of the feature.
+
+## Goals & Success Criteria
+- Goal 1
+- Goal 2
+- Success: measurable criteria
+
+## Architecture & Design Decisions
+- High-level design decisions
+- SECURITY: security-relevant notes inline
+- DEVOPS: deployment/infrastructure notes inline
+- DESIGN: API/interface design notes inline
+
+## Testing Strategy
+- Unit tests: what's covered
+- Integration tests: what's covered
+- See SDET notes in each PR for detailed test cases
+
+## File Existence Validation
+**Files verified**: YYYY-MM-DD HH:MM
+
+### Existing Files (to be modified)
+- [check] `path/to/file.ext` (what changes)
+
+### New Files (to be created)
+- [x] `path/to/new/file.ext` (NOT FOUND - will create)
+
+## PR Breakdown
+
+**Status Tracking**: Implementation agents mark each PR complete:
+
+### PR N: [Title] COMPLETE
+
+**Status**: Submitted for review on YYYY-MM-DD
+**PR URL**: https://github.com/org/repo/pull/NNN
+**Completed by**: Implementation Agent
+
+---
+
+### PR 1: [Title]
+**Files**:
+  - `path/to/file.ext` (description of changes)
+
+**Branch Command**: `git town hack feature-name-1` or `git town append feature-name-1`
+**Base Branch**: `main` or parent branch name
+**Complexity**: Small / Medium (never Large)
+**Lines**: ~N (X implementation + Y tests)
+**Code Dependencies**: None / description of what code is needed from which PR
+**File Dependencies**: None / YES - modifies same files as PR N
+**Recommended Branch Strategy**: explanation of why hack or append
+
+**Testing**: command to run tests
+
+**Goal**: What this PR accomplishes
+
+**Implementation Guidance**:
+  - Architectural patterns and considerations in plain English
+  - NO code, pseudocode, or function signatures
+
+## Implementation Notes
+- Gotchas and edge cases
+- Library recommendations
+- Out of scope items
+
+## Workspace Setup
+**Execution Model**: Sequential (single agent) / N-Agent Parallel
+```
+
+**Key format rules**:
+- File conflicts without code deps still require `git town append` -- two PRs touching the same files MUST stack even if they don't share code
+- If 3+ PRs are independent (`hack`), note the stack is parallelizable for `/pr-stack:setup-parallel`
+- For repetitive transformation PRs (migrations, bulk edits), note the pattern and batch size but keep todos per-file not per-change
 
 ## When You're Done
 

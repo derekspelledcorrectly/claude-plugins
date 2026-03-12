@@ -27,8 +27,6 @@ Use git-town for all branch management:
 
 ## STACK File Format
 
-See `${CLAUDE_PLUGIN_ROOT}/templates/STACK-EXAMPLE.md` for a complete example.
-
 Required sections:
 - **Overview**: 1-2 sentence summary
 - **Goals & Success Criteria**: What we're building and how we know it's done
@@ -49,8 +47,6 @@ Each repository needs `.stack-workflow.md` defining quality check commands:
 - **Early Iteration Check**: Fast validation during TDD (<10s)
 - **Pre-Commit Check**: Comprehensive validation before commits
 - **Pre-PR Check**: Optional expensive checks before `git town propose`
-
-Template: `${CLAUDE_PLUGIN_ROOT}/templates/stack-workflow-template.md`
 
 Exclude from git: `echo -e "STACK-*.md\n.stack-workflow.md\n.stack-workspace-checklist.md" >> .git/info/exclude`
 
