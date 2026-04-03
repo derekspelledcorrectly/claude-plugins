@@ -20,23 +20,23 @@ FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
 
 # No file_path? Nothing to check.
 if [[ -z "$FILE_PATH" ]]; then
-  exit 0
+	exit 0
 fi
 
 # Resolve to absolute path
 if [[ "$FILE_PATH" != /* ]]; then
-  FILE_PATH="$(pwd)/$FILE_PATH"
+	FILE_PATH="$(pwd)/$FILE_PATH"
 fi
 
 # Only care about files under $HOME
 if [[ "$FILE_PATH" != "$HOME"/* && "$FILE_PATH" != "$HOME" ]]; then
-  exit 0
+	exit 0
 fi
 
 # Skip if we're already editing inside the chezmoi source directory
 CHEZMOI_SOURCE=$(chezmoi source-path 2>/dev/null || echo "")
 if [[ -n "$CHEZMOI_SOURCE" && "$FILE_PATH" == "$CHEZMOI_SOURCE"/* ]]; then
-  exit 0
+	exit 0
 fi
 
 # Check if this file is managed by chezmoi
@@ -44,8 +44,8 @@ fi
 SOURCE_PATH=$(chezmoi source-path "$FILE_PATH" 2>/dev/null || echo "")
 
 if [[ -n "$SOURCE_PATH" ]]; then
-  # File IS managed by chezmoi -- warn strongly
-  cat <<WARN
+	# File IS managed by chezmoi -- warn strongly
+	cat <<WARN
 CHEZMOI GUARD: The file you are about to edit is managed by chezmoi!
 
   Target file: $FILE_PATH
@@ -61,7 +61,7 @@ ACTION REQUIRED: Before proceeding, you MUST ask the user which they prefer:
 
 Do NOT silently proceed with editing the target file.
 WARN
-  exit 0
+	exit 0
 fi
 
 # File is NOT managed by chezmoi. Check if it looks like a dotfile or config.
@@ -73,18 +73,18 @@ IS_CONFIG=false
 
 # Check for dotfiles
 if [[ "$BASENAME" == .* ]]; then
-  IS_DOTFILE=true
+	IS_DOTFILE=true
 fi
 
 # Check for common config directories
-if [[ "$RELATIVE" == .config/* || "$RELATIVE" == .local/* || \
-      "$RELATIVE" == .ssh/* || "$RELATIVE" == Library/Preferences/* || \
-      "$RELATIVE" == Library/Application\ Support/* ]]; then
-  IS_CONFIG=true
+if [[ "$RELATIVE" == .config/* || "$RELATIVE" == .local/* ||
+	"$RELATIVE" == .ssh/* || "$RELATIVE" == Library/Preferences/* ||
+	"$RELATIVE" == Library/Application\ Support/* ]]; then
+	IS_CONFIG=true
 fi
 
 if [[ "$IS_DOTFILE" == true || "$IS_CONFIG" == true ]]; then
-  cat <<SUGGEST
+	cat <<SUGGEST
 CHEZMOI NOTICE: You are editing a dotfile/config that is NOT managed by chezmoi.
 
   File: $FILE_PATH
