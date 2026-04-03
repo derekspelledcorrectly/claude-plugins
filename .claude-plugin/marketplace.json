@@ -9,5 +9,13 @@
     "version": "0.1.0",
     "pluginRoot": "./plugins"
   },
-  "plugins": []
+  "plugins": [
+    {
+      "name": "chezmoi",
+      "source": "./plugins/chezmoi",
+      "description": "Chezmoi-aware dotfile editing guard and expertise. Prevents direct edits to chezmoi-managed files and provides comprehensive chezmoi workflow guidance.",
+      "version": "1.0.0",
+      "keywords": ["chezmoi", "dotfiles", "configuration", "guard"]
+    }
+  ]
 }

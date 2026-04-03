@@ -1,0 +1,10 @@
+{
+  "name": "chezmoi",
+  "version": "1.0.0",
+  "description": "Chezmoi-aware dotfile editing guard and expertise. Prevents direct edits to chezmoi-managed files and provides comprehensive chezmoi workflow guidance.",
+  "author": {
+    "name": "Derek",
+    "email": "noreply@example.com"
+  },
+  "keywords": ["chezmoi", "dotfiles", "configuration", "guard"]
+}

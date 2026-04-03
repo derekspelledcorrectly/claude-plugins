@@ -19,7 +19,7 @@ Workflow and utility plugins for Claude Code.
 
 | Plugin | Description |
 |--------|-------------|
-| *Coming soon* | |
+| [chezmoi](plugins/chezmoi/) | Chezmoi-aware dotfile editing guard and expertise. Prevents direct edits to chezmoi-managed files and provides chezmoi workflow guidance. |
 
 ## Adding a Plugin
 

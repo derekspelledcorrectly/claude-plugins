@@ -1,0 +1,17 @@
+{
+  "description": "Chezmoi guard hooks - warns before editing chezmoi-managed files",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/chezmoi-guard.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
