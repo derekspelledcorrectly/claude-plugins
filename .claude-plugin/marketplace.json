@@ -1,0 +1,13 @@
+{
+  "name": "derek-plugins",
+  "owner": {
+    "name": "Derek",
+    "url": "https://github.com/derekspelledcorrectly"
+  },
+  "metadata": {
+    "description": "Workflow and utility plugins for Claude Code",
+    "version": "0.1.0",
+    "pluginRoot": "./plugins"
+  },
+  "plugins": []
+}

@@ -1,0 +1,38 @@
+# Derek's Claude Code Plugins
+
+Workflow and utility plugins for Claude Code.
+
+## Installation
+
+```bash
+# Add the marketplace
+/plugin marketplace add derekspelledcorrectly/claude-plugins
+
+# Browse available plugins
+/plugin
+
+# Install a specific plugin
+/plugin install <plugin-name>@derek-plugins
+```
+
+## Available Plugins
+
+| Plugin | Description |
+|--------|-------------|
+| *Coming soon* | |
+
+## Adding a Plugin
+
+Each plugin lives in `plugins/<plugin-name>/` with the standard Claude Code plugin structure:
+
+```
+plugins/<plugin-name>/
+  .claude-plugin/
+    plugin.json
+  commands/      # Slash commands (.md)
+  agents/        # Subagent definitions (.md)
+  skills/        # Skills (subdirs with SKILL.md)
+  hooks/         # Event handlers (hooks.json)
+```
+
+Register it in `.claude-plugin/marketplace.json` under the `plugins` array.
