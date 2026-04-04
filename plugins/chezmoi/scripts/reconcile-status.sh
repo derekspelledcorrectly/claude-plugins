@@ -191,12 +191,7 @@ else
 			continue
 		fi
 
-		entry_hash=$(echo "$STATE_JSON" | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-entry = data.get('entryState', {}).get('$target', {})
-print(entry.get('contentsSHA256', ''))
-" 2>/dev/null || true)
+		entry_hash=$(printf '%s' "$STATE_JSON" | jq -r --arg key "$target" '.entryState[$key].contentsSHA256 // empty' 2>/dev/null || true)
 
 		if [[ -z "$entry_hash" ]]; then
 			if $VERBOSE; then
