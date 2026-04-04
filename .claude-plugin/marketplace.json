@@ -6,8 +6,7 @@
   },
   "metadata": {
     "description": "Workflow and utility plugins for Claude Code",
-    "version": "0.1.0",
-    "pluginRoot": "./plugins"
+    "version": "0.1.0"
   },
   "plugins": [
     {
