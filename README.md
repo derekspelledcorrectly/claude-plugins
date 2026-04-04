@@ -20,6 +20,7 @@ Workflow and utility plugins for Claude Code.
 | Plugin | Description |
 |--------|-------------|
 | [chezmoi](plugins/chezmoi/) | Chezmoi-aware dotfile editing guard and expertise. Prevents direct edits to chezmoi-managed files and provides chezmoi workflow guidance. |
+| [pr-stack](plugins/pr-stack/) | Plan and implement features as stacks of small, focused PRs using TDD with git-town branch management. |
 
 ## Adding a Plugin
 
