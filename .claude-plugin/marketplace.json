@@ -15,6 +15,13 @@
       "description": "Chezmoi-aware dotfile editing guard and expertise. Prevents direct edits to chezmoi-managed files and provides comprehensive chezmoi workflow guidance.",
       "version": "1.0.0",
       "keywords": ["chezmoi", "dotfiles", "configuration", "guard"]
+    },
+    {
+      "name": "pr-stack",
+      "source": "./plugins/pr-stack",
+      "description": "Plan and implement features as stacks of small, focused PRs using TDD with git-town branch management",
+      "version": "1.0.0",
+      "keywords": ["pr-stacking", "tdd", "git-town", "workflow", "code-review"]
     }
   ]
 }
