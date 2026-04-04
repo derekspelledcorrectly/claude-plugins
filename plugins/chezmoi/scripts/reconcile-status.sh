@@ -38,16 +38,16 @@ else
 	RED='' YELLOW='' GREEN='' CYAN='' BOLD='' RESET=''
 fi
 
-printf "${BOLD}Chezmoi Reconciliation Status${RESET}\n"
+printf '%s\n' "${BOLD}Chezmoi Reconciliation Status${RESET}"
 printf '%s\n' "=============================="
 printf "\n"
 
 # --- Sandbox environment check ---
 if [[ "${TMPDIR:-}" == */tmp/claude* || "${TMPDIR:-}" == */private/tmp/claude* ]]; then
-	printf "${RED}WARNING: Sandbox-overridden TMPDIR detected (${TMPDIR})${RESET}\n"
-	printf "${RED}Templates using {{ env \"TMPDIR\" }} will render with the sandbox path,${RESET}\n"
-	printf "${RED}causing false positive drift. Run this script outside the sandbox${RESET}\n"
-	printf "${RED}(dangerouslyDisableSandbox: true) for accurate results.${RESET}\n"
+	printf '%sWARNING: Sandbox-overridden TMPDIR detected (%s)%s\n' "$RED" "$TMPDIR" "$RESET"
+	printf '%sTemplates using {{ env "TMPDIR" }} will render with the sandbox path,%s\n' "$RED" "$RESET"
+	printf '%scausing false positive drift. Run this script outside the sandbox%s\n' "$RED" "$RESET"
+	printf '%s(dangerouslyDisableSandbox: true) for accurate results.%s\n' "$RED" "$RESET"
 	printf "\n"
 fi
 
@@ -63,12 +63,12 @@ while IFS= read -r target; do
 done < <(chezmoi managed --include=files --path-style=absolute 2>/dev/null)
 
 if $VERBOSE; then
-	printf "${BOLD}[0/2] Template index: ${TMPL_COUNT} template-managed file(s)${RESET}\n"
+	printf '%s[0/2] Template index: %s template-managed file(s)%s\n' "$BOLD" "$TMPL_COUNT" "$RESET"
 	printf "\n"
 fi
 
 # --- Part 1: Visible drift (chezmoi status) ---
-printf "${BOLD}[1/2] Checking chezmoi status (visible drift)...${RESET}\n"
+printf '%s\n' "${BOLD}[1/2] Checking chezmoi status (visible drift)...${RESET}"
 STATUS_OUTPUT=$(chezmoi status 2>/dev/null || true)
 
 VISIBLE_RUN=()
@@ -120,48 +120,48 @@ if [[ -n "$STATUS_OUTPUT" ]]; then
 		fi
 
 		if [[ "$col1" == "R" || "$col2" == "R" ]]; then
-			printf "  ${RED}RUN${RESET}      ${col1}${col2}  ${path}${tmpl_tag}\n"
+			printf '  %sRUN%s      %s%s  %s%s\n' "$RED" "$RESET" "$col1" "$col2" "$path" "$tmpl_tag"
 		else
-			printf "  ${YELLOW}VISIBLE${RESET}  ${col1}${col2}  ${path}${tmpl_tag}\n"
+			printf '  %sVISIBLE%s  %s%s  %s%s\n' "$YELLOW" "$RESET" "$col1" "$col2" "$path" "$tmpl_tag"
 		fi
 		if $VERBOSE; then
 			printf "           %s\n" "$direction"
 			if $is_tmpl; then
-				printf "           ${CYAN}source: ${tmpl_src}${RESET}\n"
-				printf "           ${CYAN}re-add will STRIP template directives -- edit template manually instead${RESET}\n"
+				printf '           %ssource: %s%s\n' "$CYAN" "$tmpl_src" "$RESET"
+				printf '%s\n' "           ${CYAN}re-add will STRIP template directives -- edit template manually instead${RESET}"
 			fi
 		fi
 	done <<<"$STATUS_OUTPUT"
 else
-	printf "  ${GREEN}Clean${RESET} - no visible differences\n"
+	printf '%s\n' "  ${GREEN}Clean${RESET} - no visible differences"
 fi
 
 # Warn about script entries
 if [[ ${#VISIBLE_RUN[@]} -gt 0 ]]; then
 	printf "\n"
-	printf "  ${RED}${BOLD}Note:${RESET} ${#VISIBLE_RUN[@]} entry(s) marked RUN will ${RED}execute scripts${RESET}, not just modify files.\n"
+	printf '  %s%sNote:%s %s entry(s) marked RUN will %sexecute scripts%s, not just modify files.\n' "$RED" "$BOLD" "$RESET" "${#VISIBLE_RUN[@]}" "$RED" "$RESET"
 	printf "  Scripts may take a long time, require interactive input, or have side effects.\n"
 fi
 
 # Warn about template-managed drift
 if [[ ${#VISIBLE_TMPL[@]} -gt 0 ]]; then
 	printf "\n"
-	printf "  ${CYAN}${BOLD}Note:${RESET} ${#VISIBLE_TMPL[@]} drifted file(s) are ${CYAN}template-managed${RESET}.\n"
-	printf "  ${CYAN}Do NOT use 'chezmoi re-add' on these -- it will strip template directives.${RESET}\n"
-	printf "  ${CYAN}Instead, edit the .tmpl source file to incorporate the live changes.${RESET}\n"
+	printf '  %s%sNote:%s %s drifted file(s) are %stemplate-managed%s.\n' "$CYAN" "$BOLD" "$RESET" "${#VISIBLE_TMPL[@]}" "$CYAN" "$RESET"
+	printf '%s\n' "  ${CYAN}Do NOT use 'chezmoi re-add' on these -- it will strip template directives.${RESET}"
+	printf '%s\n' "  ${CYAN}Instead, edit the .tmpl source file to incorporate the live changes.${RESET}"
 fi
 
 # Warn about possible infrastructure false positives
 if [[ $INFRA_ADD_COUNT -gt 5 ]]; then
 	printf "\n"
-	printf "  ${YELLOW}${BOLD}Hint:${RESET} ${INFRA_ADD_COUNT} 'add' entries don't follow chezmoi naming conventions.\n"
-	printf "  These may be repo infrastructure files that need to be added to ${BOLD}.chezmoiignore${RESET}.\n"
+	printf '  %s%sHint:%s %s '"'"'add'"'"' entries don'"'"'t follow chezmoi naming conventions.\n' "$YELLOW" "$BOLD" "$RESET" "$INFRA_ADD_COUNT"
+	printf '%s\n' "  These may be repo infrastructure files that need to be added to ${BOLD}.chezmoiignore${RESET}."
 fi
 
 printf "\n"
 
 # --- Part 2: Silent template drift ---
-printf "${BOLD}[2/2] Checking template entry states (silent drift)...${RESET}\n"
+printf '%s\n' "${BOLD}[2/2] Checking template entry states (silent drift)...${RESET}"
 
 STATE_JSON=$(chezmoi state dump 2>/dev/null)
 
@@ -186,7 +186,7 @@ else
 		done
 		if $skip; then
 			if $VERBOSE; then
-				printf "  ${CYAN}SKIP${RESET}    %s (already in visible drift)\n" "$target"
+				printf '  %sSKIP%s    %s (already in visible drift)\n' "$CYAN" "$RESET" "$target"
 			fi
 			continue
 		fi
@@ -200,14 +200,14 @@ print(entry.get('contentsSHA256', ''))
 
 		if [[ -z "$entry_hash" ]]; then
 			if $VERBOSE; then
-				printf "  ${CYAN}SKIP${RESET}    %s (no entry state -- never applied?)\n" "$target"
+				printf '  %sSKIP%s    %s (no entry state -- never applied?)\n' "$CYAN" "$RESET" "$target"
 			fi
 			continue
 		fi
 
 		if [[ ! -f "$target" ]]; then
 			if $VERBOSE; then
-				printf "  ${CYAN}SKIP${RESET}    %s (target file does not exist)\n" "$target"
+				printf '  %sSKIP%s    %s (target file does not exist)\n' "$CYAN" "$RESET" "$target"
 			fi
 			continue
 		fi
@@ -218,31 +218,31 @@ print(entry.get('contentsSHA256', ''))
 			DRIFT_FOUND=true
 			SILENT_DRIFT+=("$target")
 			src=$(chezmoi source-path "$target" 2>/dev/null || echo "unknown")
-			printf "  ${RED}SILENT${RESET}   %s\n" "$target"
+			printf '  %sSILENT%s   %s\n' "$RED" "$RESET" "$target"
 			if $VERBOSE; then
 				printf "           source:      %s\n" "$src"
-				printf "           entry state:  %s...\n" "${entry_hash:0:16}"
-				printf "           actual file:  %s...\n" "${actual_hash:0:16}"
+				printf '           entry state:  %s...\n' "${entry_hash:0:16}"
+				printf '           actual file:  %s...\n' "${actual_hash:0:16}"
 				printf "           Target was edited outside chezmoi but matches rendered template.\n"
 				printf "           Run: chezmoi re-add %s  (to accept target changes)\n" "$target"
 				printf "           Or:  chezmoi apply --force %s  (to overwrite target)\n" "$target"
 			fi
 		else
 			if $VERBOSE; then
-				printf "  ${GREEN}CLEAN${RESET}   %s\n" "$target"
+				printf '  %sCLEAN%s   %s\n' "$GREEN" "$RESET" "$target"
 			fi
 		fi
 	done
 
 	if [[ ${#SILENT_DRIFT[@]} -eq 0 ]]; then
-		printf "  ${GREEN}Clean${RESET} - no silent template drift detected\n"
+		printf '%s\n' "  ${GREEN}Clean${RESET} - no silent template drift detected"
 	fi
 fi
 
 printf "\n"
 
 # --- Summary ---
-printf "${BOLD}Summary${RESET}\n"
+printf '%s\n' "${BOLD}Summary${RESET}"
 printf '%s\n' "-------"
 printf "Visible drift:  %d file(s)\n" "${#VISIBLE_DRIFT[@]}"
 printf "  Scripts (R):  %d\n" "${#VISIBLE_RUN[@]}"
@@ -252,7 +252,7 @@ printf "Template index: %d total template-managed file(s)\n" "$TMPL_COUNT"
 printf "\n"
 
 if $DRIFT_FOUND; then
-	printf "${YELLOW}Drift detected.${RESET} Reconciliation needed.\n"
+	printf '%sDrift detected.%s Reconciliation needed.\n' "$YELLOW" "$RESET"
 	printf "\n"
 	printf "To resolve plain (non-template) drift:\n"
 	printf "  chezmoi diff                    # review differences\n"
@@ -260,7 +260,7 @@ if $DRIFT_FOUND; then
 	printf "  chezmoi apply --force <file>    # overwrite target with source\n"
 	printf "\n"
 	if [[ ${#VISIBLE_TMPL[@]} -gt 0 || ${#SILENT_DRIFT[@]} -gt 0 ]]; then
-		printf "To resolve ${CYAN}template${RESET} drift:\n"
+		printf 'To resolve %stemplate%s drift:\n' "$CYAN" "$RESET"
 		printf "  Edit the .tmpl source file directly to incorporate live changes.\n"
 		printf "  Do NOT use 'chezmoi re-add' -- it strips template directives.\n"
 		printf "  chezmoi apply --force <file>    # overwrite target with source (discards live changes)\n"
@@ -268,6 +268,6 @@ if $DRIFT_FOUND; then
 	fi
 	exit 1
 else
-	printf "${GREEN}All clean!${RESET} No drift detected.\n"
+	printf '%sAll clean!%s No drift detected.\n' "$GREEN" "$RESET"
 	exit 0
 fi
