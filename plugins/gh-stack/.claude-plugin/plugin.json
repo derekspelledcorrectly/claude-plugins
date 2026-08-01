@@ -1,0 +1,17 @@
+{
+  "name": "gh-stack",
+  "version": "0.1.0",
+  "description": "Drive GitHub's native stacked pull requests (the github/gh-stack extension) as a non-interactive agent. Covers the JSON state model, worktree-private state, the never-run list, and recovery from rebase conflicts.",
+  "author": {
+    "name": "Derek Shockey"
+  },
+  "homepage": "https://github.com/derekspelledcorrectly/claude-plugins",
+  "license": "MIT",
+  "keywords": [
+    "gh-stack",
+    "stacked-prs",
+    "github",
+    "gh-cli",
+    "workflow"
+  ]
+}
