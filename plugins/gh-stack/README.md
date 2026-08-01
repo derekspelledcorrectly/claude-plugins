@@ -9,7 +9,7 @@ non-interactive agent session.
 |---------|---------|
 | `/gh-stack:status [operation]` | Show the stack, PR state, and anything blocking the next operation |
 | `/gh-stack:doctor` | Diagnose the environment: extension version, worktree visibility, remotes, rerere, skill drift |
-| `/gh-stack:submit [flags]` | Preflight, show the resolved PR plan, get approval, then submit |
+| `/gh-stack:submit [flags]` | Preflight, resolve the PR plan, and hand you the exact submit command to run |
 
 ## Skill
 
@@ -67,9 +67,11 @@ stays deliberately smaller, and documents where upstream is currently wrong.
 - Always `gh stack view --json`. Bare `gh stack view` is a TUI and hangs under a TTY.
 - Never trust exit 0 alone: an unknown subcommand prints the root help and exits 0.
 - Never `2>&1`. Data goes to stdout, status to stderr.
-- `submit`, `push`, `sync`, `link`, `unstack`, and `merge` write to the remote and require
-  explicit user approval. The `git push` deny rule does not cover them, because they are
-  `gh`, not `git`.
-- `gh stack merge` with no argument merges the entire stack, has no dry-run, and uses your
-  last-used merge method. Treat it like `git push`.
+- `submit`, `push`, `sync`, `link`, `unstack`, and `merge` all push code to GitHub or change
+  state there. **Agents never run them.** The plugin prepares the command and hands it to the
+  user. Note the `git push` deny rule does not cover them, because they are `gh`, not `git`,
+  so they need their own deny entries.
+- `gh stack merge` with no argument merges the entire stack, has no dry-run of any kind, and
+  uses your last-used merge method. `--yes` is not a safety catch: non-interactive callers
+  skip the confirmation wizard regardless.
 - Agents never restructure a stack. `modify` and `switch` need a TTY; hand those to a human.

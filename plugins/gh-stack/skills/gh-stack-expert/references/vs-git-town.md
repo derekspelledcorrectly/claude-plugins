@@ -123,6 +123,11 @@ The sanctioned path when another tool owns branch topology. Quoting `gh stack li
 > manage branches with external tools (e.g. jj, Sapling, ghstack, git-town, etc...) and want
 > to use GitHub stacked PRs without adopting local tracking.
 
+> **Agents: `link`, `submit`, `push`, `sync`, `unstack`, and `merge` appear throughout this
+> file as part of describing workflows. They all write to GitHub, and you never run them.
+> Prepare the command and hand it to the user. Every other command shown here is local and
+> safe.
+
 ```bash
 # git-town owns local topology
 git town hack data-models
@@ -130,6 +135,7 @@ git town append api-routes
 git town append frontend
 
 # gh stack owns only the GitHub-side stack object
+# (user runs this one)
 gh stack link data-models api-routes frontend
 ```
 
@@ -148,8 +154,8 @@ When you want `rebase`, `sync`, and navigation, adopt the branches into local tr
 adoption is positional; existing branches are adopted and missing ones created:
 
 ```bash
-gh stack init change1 change2 change3   # bottom to top
-gh stack submit --auto
+gh stack init change1 change2 change3   # bottom to top; local, safe for an agent
+gh stack submit --auto                  # writes to GitHub; user runs this
 ```
 
 There is a hidden `--adopt` flag. It is a deprecated no-op that prints a warning and continues

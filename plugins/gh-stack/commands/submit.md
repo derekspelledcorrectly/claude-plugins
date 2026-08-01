@@ -1,14 +1,17 @@
 ---
-description: Preflight a gh stack, show exactly which PRs would be created or updated, get approval, then submit
-argument-hint: Optional flags to pass through (e.g., "--open" to submit ready-for-review instead of draft)
-allowed-tools: Bash, Read, AskUserQuestion
+description: Preflight a gh stack and prepare the exact submit command for the user to run
+argument-hint: Optional flags to include in the prepared command (e.g., "--open" for ready-for-review instead of draft)
+allowed-tools: Bash, Read
 ---
 
-# gh stack submit
+# gh stack submit (prepare)
 
-Push every branch in the stack and create or update its pull requests. This writes to the
-remote and is the point of no return for review visibility, so it runs behind explicit
-approval.
+Do everything up to the remote write, then hand the command over.
+
+**You do not run `gh stack submit`.** It pushes branches and creates or updates pull
+requests, which is the user's call, not yours. This command exists so that when they make
+that call they are looking at a resolved plan instead of guessing. Preparation is the whole
+job here, and it is genuinely the useful part.
 
 ## Instructions
 
@@ -18,49 +21,45 @@ approval.
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gh_stack_status.py" --strict --for submit
 ```
 
-Exit 2 means blockers apply. **Stop and report them.** Do not attempt to clear them
-yourself: the common ones are a dirty working tree, a branch needing a rebase, and PR base
-drift, and each fix changes what would be submitted.
+Exit 2 means blockers apply. Report them with their `fix` lines and stop. Do not clear them
+silently: the common ones are a dirty working tree, a branch needing a rebase, and PR base
+drift, and each one changes what would be submitted.
 
-### 2. Build the plan
+Local fixes are yours to offer (`gh stack rebase --upstack` is local and rewrites only local
+branches). Anything that touches the remote is not.
 
-From the JSON, state plainly:
+### 2. Resolve the plan
+
+From the JSON, state precisely what a submit would do:
 
 - Every branch bottom to top, with its parent.
-- For each: whether submit would **create** a new PR (no `pr` object) or **update** an
-  existing one (`pr.number` present, and whether `pr.base_ref` would change).
-- That `submit` without `--open` creates new PRs as **drafts**, and with `--auto` uses
-  **auto-generated titles from commit messages**.
-- That an agent-run `submit` is non-interactive, which implies `--auto` behaviour: the
-  single-screen title editor is skipped.
+- For each: **create** a new PR (no `pr` object) or **update** an existing one
+  (`pr.number` present), and whether `pr.base_ref` would change.
+- That without `--open`, new PRs are created as **drafts**.
+- That `--auto` generates titles from commit messages rather than opening the editor.
 
-### 3. Get approval
+Name the branches and PR numbers explicitly. "It would submit the stack" is not a plan.
 
-Use AskUserQuestion. Offer:
+### 3. Hand it over
 
-- **Submit** -- proceed as planned.
-- **Submit ready-for-review** -- add `--open` (only offer this if the user's arguments did
-  not already specify it).
-- **Fix blockers first** -- stop and address what preflight found.
-- **Cancel**.
+Print the exact command, on its own line, ready to paste:
 
-Never skip this step, even if the user's original message sounded like approval. The plan
-they are approving is the resolved branch-and-PR list, which they have not seen until now.
-
-### 4. Submit
-
-Run the bare command so the harness permission prompt describes the real operation. Do not
-wrap it in a script or a shell function.
-
-```bash
+```
 gh stack submit --auto $ARGUMENTS
 ```
 
-### 5. Verify
+Say plainly that they need to run it, and why: it pushes to the remote, which is theirs to
+authorize. Do not run it, do not offer to run it, and do not suggest a variant that would
+evade the restriction.
 
-`submit` pushes branches individually and **is not atomic**: a partial failure can leave
-some branches updated and others not, with PR bases pointing at branches that did not move.
-Re-read state afterwards rather than trusting the exit code:
+Mention one property they should know before running it: **submit is not atomic.** It pushes
+branches individually, so a partial failure can leave some branches updated and others not,
+with PR bases pointing at branches that did not move. The fix is to re-run the same command,
+not to escalate to a force push.
+
+### 4. Offer to verify afterwards
+
+Once they say it has run, re-read state rather than assuming it worked:
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gh_stack_status.py" --text
@@ -70,9 +69,10 @@ Report each PR number and URL, and flag any remaining `PR_BASE_DRIFT`.
 
 ## Never
 
-- **Never run `gh stack merge`** as part of this command. It is a separate, irreversible
-  operation: with no argument it merges the *entire* stack, it has no dry-run, and with no
-  method flag it uses the last-used merge method. It belongs behind its own approval.
-- **Never run `gh pr create`** for a branch in a stack. It creates an unstacked PR that
-  `submit` then has to reconcile.
+- **Never run `gh stack submit`, `push`, `sync`, `link`, `unstack`, or `merge`.** All six
+  write to GitHub and all six are the user's.
+- **Never route around a denial** by rephrasing the command, splitting it across calls, or
+  reaching for `gh api` to do the same thing.
+- **Never run `gh pr create`** for a branch in a stack. It creates an unstacked PR that a
+  later submit then has to reconcile.
 - **Never `gh pr merge`** a stacked PR. It does not work on stacks.

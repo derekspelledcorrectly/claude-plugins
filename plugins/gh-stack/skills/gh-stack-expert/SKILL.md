@@ -49,9 +49,18 @@ goes to stderr. Merging them corrupts the JSON; piping loses the exit code.
 | `gh stack feedback` | Opens a browser. |
 | `gh extension install/upgrade` | Denied by permission policy. Upgrading `gh stack` is a user action. |
 
-**Never run these without explicit user approval** (they write to the remote, and the
-`Bash(git push:*)` deny rule does not cover them because they are `gh`, not `git`):
+**Never run these at all. They are the user's to run, not yours:**
+
 `gh stack submit`, `push`, `sync`, `link`, `unstack`, `merge`.
+
+Every one of them either pushes code to GitHub or changes state there. Note that the
+`Bash(git push:*)` deny rule does **not** cover them, because they are `gh`, not `git`; they
+need their own deny entries, and on this machine they have them. Do not read a denial as a
+prompt to rephrase the command, split it, or route around it with `gh api`.
+
+When one of these is the right next step, do the preparation and then hand it over: resolve
+exactly what would happen, print the precise command, and let the user run it. Everything up
+to the remote write is yours; the remote write is theirs.
 
 **Sandbox:** `gh` is handled through `sandbox.excludedCommands`. Do not pass
 `dangerouslyDisableSandbox` for it. Note that `gh stack`'s local operations (`init`, `add`,
