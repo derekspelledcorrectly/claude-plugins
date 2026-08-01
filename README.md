@@ -20,6 +20,7 @@ Workflow and utility plugins for Claude Code.
 | Plugin | Description |
 |--------|-------------|
 | [chezmoi](plugins/chezmoi/) | Chezmoi-aware dotfile editing guard and expertise. Prevents direct edits to chezmoi-managed files and provides chezmoi workflow guidance. |
+| [gh-stack](plugins/gh-stack/) | Drive GitHub's native stacked pull requests (the `github/gh-stack` extension) as a non-interactive agent. JSON state reporting, worktree-private state detection, and gated submit. |
 | [pr-stack](plugins/pr-stack/) | Plan and implement features as stacks of small, focused PRs using TDD with git-town branch management. |
 | [iterm-notifs](plugins/iterm-notifs/) | iTerm2-native Claude Code notifications: custom OSC 9 banners with project name, dock attention, and per-session waiting state via OSC 1337 user variables. Pairs with an AutoLaunch Python script for sound, voice, and hotkey cycling. |
 
