@@ -21,6 +21,7 @@ git rev-parse --git-common-dir
 git remote -v
 git config --get remote.pushDefault || echo "(unset)"
 git config --get rerere.enabled || echo "(unset)"
+git config --show-origin --get-all rerere.enabled || echo "(no scope sets rerere.enabled)"
 ```
 
 Then the stack state file, read from the **common** git dir. Do not use
@@ -45,7 +46,8 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gh_stack_status.py" --text --no-prs
 |---|---|
 | `--git-dir` differs from `--git-common-dir` | Linked worktree. Stack state is private to this tree, so a stack created elsewhere is invisible and `gh stack` will claim the branch is not in a stack. |
 | No `gh-stack` file in the worktree's own git dir | Confirms the above. Report the `ln -s` fix; do not apply it yourself. |
-| `rerere.enabled` unset | `gh stack init` prompts for this interactively but silently skips it when run non-interactively, so agent-created stacks lack it. Recommend `git config rerere.enabled true`. |
+| `rerere.enabled` unset or `false` | The check above reads the effective value across all scopes, so `true` from global config needs no action. Otherwise recommend `git config --global rerere.enabled true`. Never set it in `.git/config`. |
+| `rerere.enabled` set in `.git/config` and in a global or system file | The repo-local entry shadows the user's real preference. Name both origins and suggest `git config --local --unset rerere.enabled` for the user to run. |
 | More than one remote and `remote.pushDefault` unset | `checkout`, `modify`, and `trunk` resolve a remote and have no `--remote` flag. Recommend setting `remote.pushDefault`. |
 | Installed extension version differs from 0.1.0 | The skill and script were verified against 0.1.0. Re-check `gh stack --help` before relying on any subcommand. |
 

@@ -82,8 +82,8 @@ Unique to `gh stack`, per `gh stack sync --help`:
 
 The git-town failure mode carries over in kind but is structurally mitigated:
 
-- `rerere` covers repeated conflicts across layers, though `gh stack init` only enables it
-  when a human is present (see SKILL.md).
+- `rerere` covers repeated conflicts across layers. `gh stack init` offers to enable it only
+  when a human is present, but global config often enables it already (see SKILL.md).
 - Squash-merge is handled explicitly with
   `git rebase --onto <squash-sha> <old-tip-sha> <branch>`, both in the CLI and server-side.
   That is exactly the case that generates phantom conflicts, per GitHub's FAQ.

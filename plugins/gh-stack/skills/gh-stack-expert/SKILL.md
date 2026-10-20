@@ -117,7 +117,6 @@ still cannot be navigated to (`fatal: 'feat-two' is already used by worktree at 
 
 ```bash
 gh stack init base-branch next-branch      # positional; existing branches adopted automatically
-git config rerere.enabled true             # init does NOT set this non-interactively; see below
 gh stack top                               # add only works from the top (exit 5 otherwise)
 git add <specific paths> && git commit -m "..."
 gh stack add next-layer
@@ -154,9 +153,21 @@ explicitly rather than counting steps. Merged branches are silently skipped by n
 
 ## rerere
 
-`gh stack init` prompts to enable `rerere` when a human is present (default yes), and
-**silently skips it when run non-interactively**, leaving `rerere.enabled` unset. An
-agent-initialized stack therefore has no rerere unless you set it yourself.
+`gh stack init` prompts to enable `rerere` when a human is present (default yes). Without a
+terminal it **skips the prompt**. It does not change or override existing config, and the
+user's global config often already sets `rerere.enabled=true`.
+
+Read the effective value before you say anything. With no scope flag, this command resolves
+system, global, and local config:
+
+```bash
+git config --get rerere.enabled
+```
+
+If it prints `true`, say nothing about rerere. If it is unset or `false`, tell the user once
+and suggest `git config --global rerere.enabled true` for them to run. **Never write
+`.git/config` to enable it.** The sandbox blocks the write, and a repo-local value hides the
+user's real preference.
 
 It is worth enabling: stacking rebases the same branches over the same conflicts repeatedly,
 so one recorded resolution covers the whole stack instead of one hand-resolve per layer.
@@ -189,9 +200,10 @@ installed extension. It currently pins 0.0.9 while the extension is 0.1.0, so fo
 time the skill describes an *older* version than what is installed. Nothing warns about this.
 
 Known upstream-skill inaccuracies as of extension v0.1.0: it claims `init` auto-enables
-`rerere` (it does not), it claims `view --short` is unusable by agents (it exits 0 fine), it
-lists exit 7 for "rebase already in progress" (unreachable; the detached-HEAD check returns 2
-first), and it misquotes the exit-5 message.
+`rerere` (it does not by itself, though the user's global config often does), it claims
+`view --short` is unusable by agents (it exits 0 fine), it lists exit 7 for "rebase already
+in progress" (unreachable; the detached-HEAD check returns 2 first), and it misquotes the
+exit-5 message.
 
 ## Reference files
 
