@@ -13,6 +13,11 @@ export PLUGIN_ROOT
 STATUS_SCRIPT="${PLUGIN_ROOT}/scripts/gh_stack_status.py"
 export STATUS_SCRIPT
 
+# Keep the suite offline: gh-stack v0.2.0+ checks for upgrades in the background, and
+# gh itself sends telemetry.
+export GH_STACK_NO_UPDATE_NOTIFIER=1
+export GH_TELEMETRY=0
+
 # Skip the whole file when gh stack is unavailable, rather than failing.
 require_gh_stack() {
 	if ! command -v gh >/dev/null 2>&1; then
@@ -76,6 +81,15 @@ doc = json.load(sys.stdin)
 for key in sys.argv[1].split("."):
     doc = doc[int(key)] if key.isdigit() else doc[key]
 print(doc if not isinstance(doc, bool) else str(doc).lower())
+' "$2"
+}
+
+# Return 0 if the report blocks on a finding with the given code.
+has_blocker() {
+	printf '%s' "$1" | python3 -c '
+import json,sys
+codes = {f["code"] for f in json.load(sys.stdin).get("blockers", [])}
+sys.exit(0 if sys.argv[1] in codes else 1)
 ' "$2"
 }
 

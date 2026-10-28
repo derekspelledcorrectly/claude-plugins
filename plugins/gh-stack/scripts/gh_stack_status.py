@@ -9,14 +9,13 @@ leaves an agent unable to answer several questions it must answer before acting:
   * Identity. Sitting on trunk is a valid state in which no branch reports
     `isCurrent`, and it is indistinguishable from being off-stack without checking
     `trunk` explicitly. Detached HEAD and off-stack both exit 2 with different text.
-  * Visibility. Stack state lives in a file named `gh-stack` inside the git dir. In a
-    linked worktree that resolves to `.git/worktrees/<name>/`, so a stack created in
-    the main checkout is invisible and `view --json` exits 2 claiming the branch is
-    not part of a stack. `git rev-parse --git-path gh-stack` does NOT correct for
-    this: git redirects only a fixed allowlist of filenames to the common dir, and
-    `gh-stack` is not on it. This script uses `--git-common-dir` explicitly.
-  * Safety. Nothing in `gh stack` refuses a dirty working tree, and uncommitted
-    changes follow you across navigation.
+  * Ambiguity. On a trunk shared by two stacks, `view --json` exits 6 and names
+    neither. The script reads the state file and names the candidates in its error. Since v0.2.0 that file lives in
+    `--git-common-dir`, and every worktree shares it. `git rev-parse --git-path
+    gh-stack` resolves into a worktree's private git dir, so do not use it.
+  * Safety. `gh stack rebase` refuses a dirty tree only when it runs, with exit 1.
+    Navigation and `add` do not check, and uncommitted changes follow you. A rebase
+    stopped in another worktree is invisible to `view --json`.
 
 This script answers all of that in one JSON blob, and with --strict turns the report
 into a gate. It never writes: not to the stack state, not to the lock, not to the
@@ -33,8 +32,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
+import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -43,13 +44,21 @@ SCHEMA = 1
 # The extension version this script was written and tested against. A mismatch is a
 # warning, not a failure: gh-stack is pre-1.0 and its JSON shape has already changed
 # once between releases.
-TESTED_AGAINST = "0.1.0"
+TESTED_AGAINST = "0.3.0"
 
 # Operations a caller can gate on. A blocker lists the operations it blocks; a
 # blocker with an empty set is advisory everywhere (a warning).
 OPS = ("commit", "add", "rebase", "sync", "submit", "navigate")
 ALL_OPS = frozenset(OPS)
 MUTATING = frozenset({"rebase", "sync", "submit"})
+
+# gh-stack v0.2.0+ checks GitHub for upgrades in the background on any call, and
+# `git status` can rewrite the index to refresh stat data. A read-only report does
+# neither. gh's own telemetry is left to the user's GH_TELEMETRY setting.
+ENV = {**os.environ, "GH_STACK_NO_UPDATE_NOTIFIER": "1", "GIT_OPTIONAL_LOCKS": "0"}
+
+# Key that marks a rebase-state record the script could not read or parse.
+UNREADABLE = "_unreadable"
 
 
 @dataclass
@@ -84,7 +93,7 @@ def run(
     status to stderr, so `2>&1` corrupts the JSON.
     """
     proc = subprocess.run(
-        args, cwd=cwd, capture_output=True, text=True, check=False
+        args, cwd=cwd, capture_output=True, text=True, check=False, env=ENV
     )
     if check and proc.returncode != 0:
         raise Fatal(f"{' '.join(args)} failed ({proc.returncode}): {proc.stderr.strip()}")
@@ -101,7 +110,7 @@ def git(args: list[str], cwd: Path, check: bool = False) -> str:
 def gh_stack_version(cwd: Path) -> str | None:
     """Return the installed extension version, or None if it is not installed.
 
-    `gh stack --version` prints "gh stack version 0.1.0". Note that an unknown
+    `gh stack --version` prints "gh stack version 0.3.0". Note that an unknown
     subcommand exits 0 with the root help, so exit status alone proves nothing here.
     """
     proc = run(["gh", "stack", "--version"], cwd)
@@ -118,7 +127,6 @@ class Worktree:
     common_dir: str
     is_linked: bool
     state_file: str
-    state_visible: bool
 
 
 def inspect_worktree(cwd: Path) -> Worktree:
@@ -127,20 +135,64 @@ def inspect_worktree(cwd: Path) -> Worktree:
     common_dir = Path(common_raw)
     if not common_dir.is_absolute():
         common_dir = (cwd / common_dir).resolve()
-    is_linked = git_dir != common_dir
-    # gh-stack reads state from its own git dir, so in a linked worktree it looks in
-    # the worktree-private path and finds nothing.
     return Worktree(
         path=str(cwd),
         git_dir=str(git_dir),
         common_dir=str(common_dir),
-        is_linked=is_linked,
+        is_linked=git_dir != common_dir,
         state_file=str(common_dir / "gh-stack"),
-        state_visible=(git_dir / "gh-stack").exists(),
     )
 
 
 # ------------------------------------------------------------------------- state
+
+
+def read_rebase_state(wt: Worktree) -> dict | None:
+    """Return the stopped stack rebase record, or None if no rebase is stopped.
+
+    A conflict detaches HEAD only in the worktree that holds the conflicted branch.
+    From every other worktree `view --json` exits 0 and looks normal, so this file is
+    the only signal there. The file's presence is what counts: a record that cannot be
+    read comes back as {UNREADABLE: reason}, never None, so the gate stays closed.
+    """
+    path = Path(wt.common_dir) / "gh-stack-rebase-state"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as exc:
+        return {UNREADABLE: f"could not read {path}: {exc}"}
+    if not isinstance(data, dict):
+        return {UNREADABLE: f"{path} holds a JSON {type(data).__name__}, not an object"}
+    return data
+
+
+def dig(obj: object, *keys: str) -> object:
+    """Walk nested dicts. Return None when a key is missing or a level is not a dict."""
+    for key in keys:
+        if not isinstance(obj, dict):
+            return None
+        obj = obj.get(key)
+    return obj
+
+
+def describe_rebase(state: dict) -> tuple[str, str]:
+    """Return (message, fix) for a stopped stack rebase."""
+    resume = "then run `gh stack rebase --continue` or `gh stack rebase --abort` from any worktree."
+    if problem := state.get(UNREADABLE):
+        return (
+            f"a stack rebase record exists but is unreadable ({problem})",
+            f"Inspect the file. If a rebase is stopped, resolve and stage the conflict, {resume}",
+        )
+    branch = dig(state, "conflictBranch")
+    if not isinstance(branch, str) or not branch:
+        return ("a stack rebase stopped on a conflict", f"Resolve and stage the conflict, {resume}")
+    path = dig(state, "worktrees", "owners", branch, "path")
+    where = f" in {path}" if isinstance(path, str) and path else ""
+    return (
+        f"a stack rebase stopped on a conflict on {branch!r}",
+        f"Resolve and stage the conflict{where}, {resume}",
+    )
 
 
 def read_view_json(cwd: Path) -> tuple[dict | None, str]:
@@ -160,9 +212,8 @@ def read_view_json(cwd: Path) -> tuple[dict | None, str]:
 def read_state_file(wt: Worktree, current: str) -> tuple[dict | None, list[Finding]]:
     """Fallback: parse the on-disk state file from the *common* git dir.
 
-    This is the only way to answer two cases `gh stack` refuses outright: a linked
-    worktree whose private git dir has no state, and a trunk shared by two stacks
-    (where `view --json` exits 6 and tells you nothing about the candidates).
+    This answers the one case `gh stack` refuses outright: a trunk shared by two
+    stacks, where `view --json` exits 6 and tells you nothing about the candidates.
     """
     findings: list[Finding] = []
     path = Path(wt.state_file)
@@ -227,8 +278,8 @@ def enrich(branches: list[dict], trunk: str, cwd: Path) -> list[dict]:
     """Resolve what `gh stack view --json` leaves out.
 
     Parentage comes from array order (index 0's parent is trunk), because `base` is a
-    commit SHA. `head` is omitempty and is simply absent for a branch with no commits
-    of its own, so always resolve it with git rather than trusting the key.
+    commit SHA. `head` is omitempty and stays absent after `init` and `add` until a
+    rebase records it, so always resolve it with git rather than trusting the key.
     """
     out: list[dict] = []
     for i, b in enumerate(branches):
@@ -337,7 +388,7 @@ def overlay_prs(branches: list[dict], cwd: Path, repo: str | None) -> list[Findi
     return findings
 
 
-def collect_findings(report: dict, wt: Worktree, cwd: Path) -> list[Finding]:
+def collect_findings(report: dict, cwd: Path) -> list[Finding]:
     findings: list[Finding] = []
     branches = report["branches"]
 
@@ -346,8 +397,8 @@ def collect_findings(report: dict, wt: Worktree, cwd: Path) -> list[Finding]:
             Finding(
                 "DIRTY_WORKTREE",
                 f"{report['modified_files']} modified, {report['untracked_files']} untracked",
-                "Commit or stash first. Nothing in gh stack refuses a dirty tree, and "
-                "uncommitted changes follow you across navigation.",
+                "Commit or stash first. gh stack rebase refuses any modified or untracked "
+                "file, and navigation carries uncommitted changes with you.",
                 MUTATING | {"navigate"},
             )
         )
@@ -379,7 +430,7 @@ def collect_findings(report: dict, wt: Worktree, cwd: Path) -> list[Finding]:
             Finding(
                 "NEEDS_REBASE",
                 f"branches not on top of their parent: {stale}",
-                "gh stack rebase --upstack",
+                "gh stack rebase --no-trunk (offline, every branch in the stack)",
                 frozenset({"submit"}),
             )
         )
@@ -391,19 +442,6 @@ def collect_findings(report: dict, wt: Worktree, cwd: Path) -> list[Finding]:
                 "the stack still contains merged branches; navigation silently skips them, "
                 "so step counting drifts",
                 "gh stack sync --prune (writes to the remote; get approval first).",
-            )
-        )
-
-    if wt.is_linked and not wt.state_visible:
-        findings.append(
-            Finding(
-                "WORKTREE_STATE_INVISIBLE",
-                "this is a linked worktree and gh stack's state is not visible from it",
-                f'ln -s "{wt.state_file}" "{wt.git_dir}/gh-stack"   '
-                "(restores visibility only; branches held by another worktree still "
-                "cannot be checked out. Never use GIT_DIR= to work around this: it "
-                "reports the primary checkout's branch.)",
-                ALL_OPS,
             )
         )
 
@@ -435,9 +473,19 @@ def build(cwd: Path, want_prs: bool, repo: str | None) -> tuple[dict, list[Findi
         )
 
     wt = inspect_worktree(cwd)
+    rebase = read_rebase_state(wt)
     current = git(["symbolic-ref", "--quiet", "--short", "HEAD"], cwd)
     if not current:
+        if rebase is not None:
+            message, fix = describe_rebase(rebase)
+            raise Fatal(f"HEAD is detached because {message}. {fix}")
         raise Fatal("HEAD is detached; check out a branch first")
+    if rebase is not None:
+        # Commit stays open: it never runs gh stack, so it cannot collide with the
+        # stopped operation's lock or state.
+        findings.append(
+            Finding("REBASE_IN_PROGRESS", *describe_rebase(rebase), ALL_OPS - {"commit"})
+        )
 
     payload, view_err = read_view_json(cwd)
     source = "gh-stack-view"
@@ -446,7 +494,9 @@ def build(cwd: Path, want_prs: bool, repo: str | None) -> tuple[dict, list[Findi
         findings.extend(extra)
         source = "git-state-file"
         if payload is None:
-            raise Fatal(view_err or f"{current!r} is not part of any tracked stack")
+            # No report to attach findings to, so carry them in the error itself.
+            detail = " ".join(f"{f.message}. {f.fix}" for f in extra)
+            raise Fatal(detail or view_err or f"{current!r} is not part of any tracked stack")
 
     trunk = payload["trunk"]
     branches = enrich(payload["branches"], trunk, cwd)
@@ -469,7 +519,6 @@ def build(cwd: Path, want_prs: bool, repo: str | None) -> tuple[dict, list[Findi
         "worktree": {
             "path": wt.path,
             "is_linked": wt.is_linked,
-            "state_visible": wt.state_visible,
             "state_file": wt.state_file,
         },
         "dirty": bool(porcelain),
@@ -481,7 +530,7 @@ def build(cwd: Path, want_prs: bool, repo: str | None) -> tuple[dict, list[Findi
     if want_prs:
         findings.extend(overlay_prs(branches, cwd, repo))
 
-    findings.extend(collect_findings(report, wt, cwd))
+    findings.extend(collect_findings(report, cwd))
     return report, findings
 
 
@@ -526,7 +575,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--no-prs",
         action="store_true",
-        help="skip the PR overlay; fully offline, runs inside the sandbox",
+        help="skip the PR overlay; makes no GitHub API calls, runs inside the sandbox",
     )
     parser.add_argument(
         "--strict", action="store_true", help="exit 2 if any blocker applies"
@@ -549,6 +598,11 @@ def main(argv: list[str] | None = None) -> int:
     except Fatal as exc:
         print(json.dumps({"ok": False, "schema": SCHEMA, "error": str(exc)}, indent=2))
         print(f"error: {exc}", file=sys.stderr)
+        return 1
+    except Exception as exc:
+        # Keep the stdout-is-JSON contract even for a bug or an upstream schema change.
+        print(json.dumps({"ok": False, "schema": SCHEMA, "error": f"internal: {exc!r}"}, indent=2))
+        traceback.print_exc()
         return 1
 
     rendered = [f.as_dict(args.op) for f in findings]
