@@ -1,7 +1,9 @@
-# `gh stack` subcommand digest (v0.1.0)
+# `gh stack` subcommand digest (v0.3.0)
 
 Lookup reference. Flags and usage strings below were dumped from `gh stack <cmd> --help` on
-extension **v0.1.0** (gh 2.96.0, macOS). Groupings match `gh stack --help`.
+extension **v0.1.0** (gh 2.96.0, macOS), and every flag table was re-checked on **v0.3.0**.
+Behavior notes come from v0.1.0 testing unless they name a later version. Groupings match
+`gh stack --help`.
 
 Every subcommand also accepts `-h, --help`; it is omitted from the flag tables.
 
@@ -88,6 +90,9 @@ Gotchas:
 - With no branch name in a non-interactive terminal it fails messily rather than cleanly:
   exit **1**, `could not read branch name: failed to set terminal mode: operation not
   supported by device`.
+- From a branch outside any stack, v0.1.1 and later offer to start a new stack in a
+  terminal. Without one it exits **2**, `✗ current branch "<b>" is not part of a stack`,
+  and does not hang (observed on v0.3.0).
 
 ### `checkout`
 
@@ -97,26 +102,35 @@ Switch to a stack by stack number, PR number, PR URL, or branch name.
 gh stack checkout [<stack-number> | <pr-number> | <pr-url> | <branch>] [flags]
 ```
 
-No flags beyond `--help`. **There is no `--remote` flag**; it relies on `remote.pushDefault`.
+| Flag | Description |
+|------|-------------|
+| `--print-path` | Print the target worktree path (requires an explicit target) |
+
+**There is no `--remote` flag**; it relies on `remote.pushDefault`.
 
 | Property | Value |
 |---|---|
 | Positional | One target. Optional to the parser |
-| TUI | With no argument, opens a searchable picker of local and remote stacks |
-| Net | Only when resolving a stack number, PR number, or PR URL. A local branch name is offline |
+| TUI | With no argument, first offers a remote stack that contains the current branch, then opens a searchable picker of local and remote stacks |
+| Net | When resolving a stack number, PR number, or PR URL, and when a branch name is not tracked locally. A locally tracked branch name is offline |
 
 Gotchas:
 
 - Resolution order for a bare number: **stack number first**, then locally tracked PR number,
   then a PR number discovered from GitHub, then a branch name. Stack and PR numbers never
   overlap.
-- A branch name resolves against **locally tracked stacks only**. Success looks like:
+- A branch name resolves against locally tracked stacks first. Since v0.1.1, an untracked
+  name is then looked up in active stacks on GitHub, and a match is **pulled down and
+  tracked locally**. That writes local state and fetches branches. Success looks like:
   ```
   ✓ Switched to feat-b
   Stack: (main) <- feat-a <- feat-b <- feat-c
   ```
-- Unknown branch: exit **2**,
-  `✗ no locally tracked stack found for "<name>"`.
+- Unknown branch with no remote match: exit **2**,
+  `✗ no locally tracked stack found for "<name>"`. The remote lookup is best-effort, so a
+  network failure falls through to the same error.
+- A target branch checked out in another worktree: exit **5** with a `cd <path>` hint.
+  `--print-path` prints that path instead.
 - No argument in a non-interactive terminal: exit **1**,
   `✗ no target specified; provide a branch name or PR number, or run interactively to select a stack`.
 - UNVERIFIED (documented upstream, not reproduced here): `checkout <pr-number>` when a
@@ -176,7 +190,8 @@ Gotchas:
 - `--local` never contacts GitHub. Combining `--local` with a number that is not tracked
   locally is an error.
 - GitHub decides what can be unstacked. PRs queued for merge or with auto-merge enabled stay
-  stacked, and the stack is kept.
+  stacked, and the stack is kept on GitHub. Since v0.3.0, merged PRs that GitHub keeps no
+  longer stop the local removal.
 
 ### `view`
 
@@ -225,6 +240,7 @@ gh stack link <stack-number | branch-or-pr> <branch-or-pr> [<branch-or-pr>...] [
 | Flag | Description |
 |------|-------------|
 | `--base string` | Base branch for the bottom of the stack (defaults to the repository default branch) |
+| `--no-atomic` | Disable atomic pushes (also set by `GH_STACK_NO_ATOMIC`) |
 | `--open` | Mark new and existing PRs as ready for review |
 | `--remote string` | Remote to push to (defaults to auto-detected remote) |
 
@@ -288,6 +304,7 @@ gh stack push [flags]
 
 | Flag | Description |
 |------|-------------|
+| `--no-atomic` | Disable atomic pushes (also set by `GH_STACK_NO_ATOMIC`) |
 | `--remote string` | Remote to push to (defaults to auto-detected remote) |
 
 | Property | Value |
@@ -298,9 +315,9 @@ gh stack push [flags]
 
 Gotchas:
 
-- Documented behaviour: explicit per-branch `--force-with-lease` checks, and
-  **updates are not atomic**. A branch may update even if another is rejected. Rerun after
-  fixing the rejected branch; already-updated branches are unchanged.
+- Per-branch `--force-with-lease` checks with **atomic** updates by default since v0.3.0.
+  Every branch updates or none does. With `--no-atomic` or `GH_STACK_NO_ATOMIC=1`, one
+  branch can update while another is rejected.
 - Merged and queued branches are skipped automatically.
 - Does not create or update pull requests.
 - No remotes configured: exit **1**, `✗ no remotes configured`.
@@ -316,6 +333,7 @@ gh stack rebase [branch] [flags]
 | Flag | Description |
 |------|-------------|
 | `--abort` | Abort rebase and restore all branches |
+| `--accept-base-change` | Rebase onto a retargeted base even if the old base did not merge |
 | `--committer-date-is-author-date` | Set the committer date to the author date during rebase |
 | `--continue` | Continue rebase after resolving conflicts |
 | `--downstack` | Only rebase branches from trunk to current branch |
@@ -336,9 +354,21 @@ Gotchas:
   performs inter-branch rebases only.
 - `--continue` works non-interactively after `git add`.
 - `--abort` with nothing in progress: exit **1**, `✗ no rebase in progress`.
-- A staged-but-uncommitted file did not block a rebase in testing. Check
-  `git status --porcelain` yourself rather than relying on a guard.
-- Merged PRs are handled with `--onto` so commits replay onto the merge target.
+- **A dirty tree is refused (v0.3.0).** Any modified, staged, or untracked file in an
+  affected worktree stops the rebase before it starts: exit **1**,
+  `✗ uncommitted changes in worktree <path>; commit or stash them before continuing`.
+  v0.1.0 did not check.
+- Merged PRs are handled with `--onto` so commits replay onto the merge target. Since
+  v0.3.0 the boundary is the commit GitHub actually merged, so a stale local copy of a
+  merged branch no longer replays already-merged commits.
+- **Base retargeting (v0.3.0).** When a stack's base branch is deleted, GitHub retargets
+  the stack to the default branch, and `rebase` follows it. If the old base never merged,
+  following it drops that base's commits from the stack. The command asks first, or
+  proceeds silently with `--accept-base-change`. UNVERIFIED: behavior without a terminal;
+  it needs a live retargeted stack to reproduce.
+- With branches spread across worktrees, each branch is rebased in the checkout that holds
+  it. The clean-tree check covers every affected worktree, not only yours. Requires Git
+  2.36 or later.
 
 Conflict handling: see `failure-modes.md`.
 
@@ -353,6 +383,7 @@ gh stack submit [flags]
 | Flag | Description |
 |------|-------------|
 | `--auto` | Use auto-generated PR titles without prompting |
+| `--no-atomic` | Disable atomic pushes (also set by `GH_STACK_NO_ATOMIC`) |
 | `--open` | Mark new and existing PRs as ready for review |
 | `--remote string` | Remote to push to (defaults to auto-detected remote) |
 
@@ -371,7 +402,9 @@ Gotchas:
 - Title generation: a single commit uses its subject as the title and its body as the PR body;
   multiple commits humanise the branch name.
 - **No flag sets a custom PR title or body.** Use `gh pr edit` afterwards.
-- Not atomic. A later rejected push leaves earlier pushes and PR updates in place.
+- The branch push is atomic by default since v0.3.0. **PR updates are not atomic.** A
+  failure after the push can leave some PRs created or retargeted and others not. Rerun
+  the same command.
 - No remote: exit **4**, `✗ failed to create GitHub client: determining repository: unable to
   determine current repository, no git remotes configured for this repository`.
 
@@ -385,6 +418,8 @@ gh stack sync [flags]
 
 | Flag | Description |
 |------|-------------|
+| `--accept-base-change` | Rebase onto a retargeted base even if the old base did not merge |
+| `--no-atomic` | Disable atomic pushes (also set by `GH_STACK_NO_ATOMIC`) |
 | `--prune` | Delete local branches for merged PRs |
 | `--remote string` | Remote to fetch from and push to (defaults to auto-detected remote) |
 
@@ -399,9 +434,8 @@ push, sync PR state, then link open PRs into a stack once two or more PRs exist.
 
 Gotchas:
 
-- **`sync` advertises `--force-with-lease --atomic` for its push step while `push` documents
-  non-atomic updates.** Both statements are current as of v0.1.0. Do not assume the two
-  commands push identically.
+- `push`, `sync`, and `submit` share one push behavior since v0.3.0: atomic by default,
+  partial with `--no-atomic` or `GH_STACK_NO_ATOMIC=1`.
 - A clean "remote is ahead" update applies automatically. A genuine divergence prompts in a
   terminal and **aborts in a non-interactive one**, exiting successfully with
   `ℹ Sync aborted — no changes were made`. Exit 0 does not mean the stack synced.
@@ -409,6 +443,8 @@ Gotchas:
   `✓ Branches synced` means branches were pushed but no stack object was created or updated.
 - Never opens PRs. Use `submit`.
 - On rebase conflict it restores all branches and exits **3**.
+- Follows a retargeted base exactly as `rebase` does, including the confirmation before
+  dropping commits from an unmerged old base.
 - Pruning happens non-interactively only when `--prune` is passed.
 - No remotes: exit **1**, `✗ no remotes configured`.
 
@@ -416,7 +452,9 @@ Gotchas:
 
 ## Navigation
 
-All five are offline, non-interactive, and skip merged branches.
+All five are offline, non-interactive, and skip merged branches. Each takes
+`--print-path`, which prints the target's worktree path instead of failing on a branch
+held by another worktree.
 
 | Command | Purpose | Positional |
 |---|---|---|
@@ -444,6 +482,9 @@ Gotchas:
 - `up` from the trunk enters the stack at the bottom.
 - On a trunk shared by two stacks, these exit **2** while `view --json` exits 6. See
   `failure-modes.md`.
+- A target branch checked out in another worktree: exit **5**,
+  `Branch "<b>" is already checked out in another worktree`, plus a `cd <path>` hint.
+  Observed with `bottom`. Expect the same from the other navigation commands.
 
 ### `switch`
 

@@ -38,10 +38,17 @@ Summarise for the user:
 If the script exits 1, read the `error` field from the JSON on stdout and explain it.
 Two errors have specific, non-obvious causes worth naming:
 
-- **"is not part of any tracked stack"** while inside a linked worktree means gh stack's
-  state is worktree-private, not that the branch is unstacked. The script reports
-  `WORKTREE_STATE_INVISIBLE` with the symlink fix.
-- **"HEAD is detached"** also occurs mid-rebase. During a rebase conflict every `gh stack`
-  command fails with exit 2, including `view --json`. See `references/failure-modes.md`.
+- **"is not part of a stack"** (gh's wording) or **"is not part of any tracked stack"**
+  (the script's) inside a linked worktree means the branch is not
+  stacked, because state is shared across worktrees. The exceptions are an extension older
+  than v0.2.0, or a leftover `gh-stack` symlink in the worktree's git dir. Run
+  `/gh-stack:doctor` for either.
+- **"HEAD is detached"** also occurs mid-rebase. During a rebase conflict, every
+  `gh stack` command fails with exit 2 in the worktree that holds the conflict, including
+  `view --json`. The script names the conflicted branch and its worktree. See
+  `references/failure-modes.md`.
+
+From any other worktree the same conflict shows up as a `REBASE_IN_PROGRESS` blocker,
+because `view --json` there looks normal. Name the worktree from its `fix` line.
 
 Do not run any mutating `gh stack` command as part of this report.

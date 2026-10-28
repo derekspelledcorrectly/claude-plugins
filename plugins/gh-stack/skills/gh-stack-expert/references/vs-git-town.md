@@ -2,7 +2,8 @@
 
 Concept mapping, model differences, and how to coexist with git-town in one repo.
 
-Verified against **gh-stack v0.1.0** and **Git Town 24.0.0** on this machine. **Graphite was
+Verified against **gh-stack v0.1.0** and **Git Town 24.0.0** on this machine, with
+gh-stack v0.3.0 changes noted where they apply. **Graphite was
 never installed** (`gt` here is a shell alias to `git-town`), so every Graphite cell below is
 documentation-only, from graphite.com/docs, and was not confirmed by running anything.
 
@@ -228,7 +229,8 @@ a cascading rebase runs across the remainder.
 | Rebase | Commits from each PR replayed onto the base. Linear history, no merge commit, per-commit granularity preserved. |
 | Merge commit | **One** merge commit for the entire merged group, with each PR's full history preserved inside it. Coarsest of the three. |
 
-Constraints, all from GitHub's stacked-PR docs and FAQ:
+Constraints, from GitHub's stacked-PR docs and FAQ. The "Since v0.3.0" notes come from the
+extension's release notes:
 
 - **A fully linear history between every branch is a strict merge requirement.** When it is
   lost, the merge box shows a "Rebase stack" button that performs a server-side cascading
@@ -251,7 +253,12 @@ Constraints, all from GitHub's stacked-PR docs and FAQ:
   Recovering means `unstack` and recreate. Prefer dropping the branch via `gh stack modify`
   before closing the PR.
 - **`unstack` only removes open, draft, and closed PRs.** Merged and queued PRs stay in the
-  stack permanently, so a stack that has landed anything can never be fully dissolved.
+  stack permanently, so a stack that has landed anything can never be fully dissolved on
+  GitHub. Since v0.3.0 the CLI still removes such a stack locally, and `submit` after a
+  `modify` of a partly merged stack no longer fails.
+- **Deleting a stack's base branch retargets the stack.** GitHub moves it to the repo's
+  default branch. Since v0.3.0, `gh stack rebase` and `sync` follow the retarget. See
+  SKILL.md before you let either one drop commits.
 
 ## Other documented limits
 

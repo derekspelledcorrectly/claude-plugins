@@ -1,8 +1,9 @@
-# `gh stack` failure modes and state inspection (v0.1.0)
+# `gh stack` failure modes and state inspection (v0.3.0)
 
 Diagnostic reference. Everything marked observed was reproduced against extension **v0.1.0**
-(gh 2.96.0, git 2.55.0, macOS) in throwaway repos. Anything requiring a live remote or real
-pull requests is marked **UNVERIFIED**.
+(gh 2.96.0, git 2.55.0, macOS) in throwaway repos. Worktree, rebase-state, and exit-7
+behavior was re-observed on **v0.3.0**. Anything requiring a live remote or real pull
+requests is marked **UNVERIFIED**.
 
 ---
 
@@ -12,12 +13,12 @@ pull requests is marked **UNVERIFIED**.
 |---|---|---|---|
 | 0 | Success | Observed | Also returned by an unrecognised subcommand, which prints root help to stdout |
 | 1 | Generic error | Observed | `gh stack view --nonexistent-flag` -> `unknown flag: --nonexistent-flag`; `gh stack push` with no remotes -> `✗ no remotes configured`; `gh stack switch` non-interactive -> `✗ switch requires an interactive terminal`; `gh stack rebase --abort` with nothing running -> `✗ no rebase in progress` |
-| 2 | Not in a stack, or stack not found | Observed | `✗ current branch "main" is not part of a stack`; `✗ no locally tracked stack found for "<name>"`; during a rebase conflict, `✗ failed to get current branch: failed to run git: not on any branch` |
+| 2 | Not in a stack, or stack not found | Observed | `✗ current branch "main" is not part of a stack`; `✗ no locally tracked stack found for "<name>"`; in the worktree that holds a rebase conflict, `✗ failed to get current branch: git: not on any branch` (v0.1.0 said `failed to run git:`) |
 | 3 | Rebase conflict | Observed | `gh stack rebase --no-trunk` with a real conflict |
 | 4 | GitHub API failure | Observed | `gh stack submit --auto` with no remote -> `✗ failed to create GitHub client: determining repository: unable to determine current repository, no git remotes configured for this repository` |
 | 5 | Invalid arguments or flags | Observed | `gh stack down abc` -> `✗ invalid number "abc"`; `add` from mid-stack -> `✗ can only add branches to the top of the stack`; `init` on an existing stack -> `✗ current branch "<x>" is already part of a stack`; `init` with no args non-interactively -> `✗ interactive input required; provide branch names as arguments` |
 | 6 | Disambiguation required | Observed | `view --json` on a trunk shared by two stacks |
-| 7 | Rebase already in progress | **UNVERIFIED, likely unreachable** | Running `gh stack rebase` during a conflict returns **2**, not 7, because the detached-HEAD check fires first |
+| 7 | Rebase already in progress | Observed (v0.3.0) | A second `gh stack rebase` from a worktree other than the conflicted one -> `✗ a rebase operation is already in progress (<common-dir>/gh-stack-rebase-state)`, then `Operation started in worktree <path>`. In the conflicted worktree itself the detached-HEAD check fires first and returns **2** |
 | 8 | Stack locked by another process | Observed | `✗ another process is currently editing the stack — try again later` |
 | 9 | Stacked PRs not enabled for repository | **UNVERIFIED** | Requires a repository without the feature |
 | 10 | Modify session interrupted | **UNVERIFIED** | Requires interrupting the `modify` TUI |
@@ -154,7 +155,7 @@ stale", never as a per-branch list of what to fix.
 Walk consecutive pairs and ask whether the parent is an ancestor of the child:
 
 ```bash
-f=$(git rev-parse --git-path gh-stack)
+f="$(git rev-parse --git-common-dir)/gh-stack"
 
 jq -r '.stacks[0] | [.trunk.branch] + [.branches[].branch] | .[]' "$f" \
   | awk 'NR>1 {print prev, $0} {prev=$0}' \
@@ -195,62 +196,89 @@ Resolve conflicts on feat-b, then run `gh stack rebase --continue`
 Or abort this operation with `gh stack rebase --abort`
 ```
 
-All of that is on **stderr**. Conflicted paths are parseable as lines matching `^  C (.+)$`.
+All of that is on **stderr**. Conflicted paths are parseable as lines matching
+`^  C (.+?)( \(lines .*\))?$`. Since v0.3.0 each path can carry a `(lines N–M)` suffix.
 
-### Every `gh stack` command fails during a conflict
-
-HEAD is detached while the rebase runs, and every subcommand bails on the same check:
+When the conflicted branch is checked out in another worktree, the conflict happens
+**there**, and stderr says so:
 
 ```
-$ gh stack view --json        EXIT=2  ✗ failed to get current branch: failed to run git: not on any branch
+⚠ Rebasing feat-two onto feat-one — conflict
+Conflict worktree: /repo-wt
+Resolve and stage files in that worktree; continuation may be run from any worktree.
+```
+
+### `gh stack` fails in the conflicted worktree, and only there
+
+HEAD is detached in the worktree that holds the conflict, and every subcommand run there
+fails the same check:
+
+```
+$ gh stack view --json        EXIT=2  ✗ failed to get current branch: git: not on any branch
 $ gh stack rebase --no-trunk  EXIT=2  (same)
 $ gh stack add zzz            EXIT=2  (same)
 ```
 
-`view --json` fails too, so **`gh stack` cannot report on its own conflict**. Detect and
-inspect the state out of band:
+**From any other worktree, `view --json` exits 0** and shows an ordinary stack with
+`needsRebase: true`. Nothing in that output says a rebase is mid-flight. Detect the state
+out of band:
 
 ```bash
-# Is a stack rebase in progress?
-test -f "$(git rev-parse --git-path gh-stack-rebase-state)"
+# Is a stack rebase in progress, in any worktree?
+test -f "$(git rev-parse --git-common-dir)/gh-stack-rebase-state"
 
-# Which files are conflicted?
+# Which files are conflicted? Run this in the conflict worktree.
 git diff --name-only --diff-filter=U
 ```
 
 `git branch --show-current` returns empty while detached.
 
-### `.git/gh-stack-rebase-state`
+### `gh-stack-rebase-state`
 
-Present only during a conflict, removed on completion. Resolve the path with
-`git rev-parse --git-path gh-stack-rebase-state`.
+Lives in the common git dir. Present only during a conflict, removed on completion or
+abort. Observed on v0.3.0, abridged:
 
 ```json
 {
-  "currentBranchIndex": 1,
-  "conflictBranch": "feat-b",
-  "remainingBranches": ["feat-c"],
-  "originalBranch": "feat-a",
-  "originalRefs": {
-    "feat-a": "d9520b210d0f2a186a0bcac5a05202c5e07efed4",
-    "feat-b": "20016a3947eb6899741db2c5e1c59a85cb8dfe74",
-    "feat-c": "8a00e85a8400ee1d6e2b82a86b37f75c8f30b40e"
+  "phase": "conflict",
+  "worktrees": {
+    "origin": { "path": "/repo", "id": "." },
+    "owners": {
+      "feat-one": { "path": "/repo" },
+      "feat-two": { "path": "/repo-wt", "id": "worktrees/wt" }
+    },
+    "pending": "feat-two"
   },
-  "ontoOldBase": "20016a3947eb6899741db2c5e1c59a85cb8dfe74",
+  "stackTrunk": "main",
+  "stackBranches": ["feat-one", "feat-two"],
+  "currentBranchIndex": 1,
+  "conflictBranch": "feat-two",
+  "remainingBranches": null,
+  "originalBranch": "feat-one",
+  "originalRefs": {
+    "feat-one": "27d6ec6f5d0bacbca1e9967187b10ca72368b771",
+    "feat-two": "daf9e11c04a463b906a6c31f3069819915987afa"
+  },
+  "ontoOldBase": "daf9e11c04a463b906a6c31f3069819915987afa",
   "noTrunk": true
 }
 ```
 
 | Field | Meaning |
 |---|---|
+| `phase` | `conflict` while stopped |
+| `worktrees.owners` | Which checkout holds each branch. The conflict branch's entry is where to resolve |
+| `worktrees.origin` | Checkout the rebase was started from |
 | `conflictBranch` | Branch currently being rebased |
-| `remainingBranches` | Branches not yet processed |
+| `remainingBranches` | Branches not yet processed. `null` when none remain |
 | `originalBranch` | Branch to return to when the rebase finishes |
 | `originalRefs` | Pre-rebase tip of every branch. This is the undo record `--abort` uses |
+| `originalStack` | Full stack definition before the rebase (omitted above) |
 | `ontoOldBase` | Previous base of the conflicting branch |
 | `noTrunk` | Whether `--no-trunk` was in effect |
 
-Alongside it git keeps its own `rebase-merge/` directory and `REBASE_HEAD`.
+Git keeps its own `rebase-merge/` directory and `REBASE_HEAD` in the conflict worktree's
+private git dir.
 
 ### Continue
 
@@ -265,7 +293,8 @@ All branches in stack rebased locally (without trunk)
 To push up your changes and open/update the stack of PRs, run `gh stack submit`
 ```
 
-Works non-interactively. Returns to `originalBranch`. If another conflict occurs, repeat.
+Works non-interactively and from any worktree. Returns to `originalBranch`. If another
+conflict occurs, repeat.
 
 ### Abort
 
@@ -290,20 +319,17 @@ shared by two stacks, or when the extension is unavailable.
 ### Locating the file
 
 ```bash
-git rev-parse --git-path gh-stack
+echo "$(git rev-parse --git-common-dir)/gh-stack"
 ```
 
-**Use `--git-path`, not `--git-common-dir`.** State is stored per git-dir, and in a linked
-worktree those differ:
+**Use `--git-common-dir`, not `--git-path`.** Since v0.2.0 one state file in the common git
+dir serves every worktree. `--git-path gh-stack` resolves into a linked worktree's private
+git dir, because git redirects only a fixed allowlist of filenames, and nothing is there.
+Related files in the same directory: `gh-stack.lock`, `gh-stack-operation.lock`, and
+`gh-stack-rebase-state`.
 
-```
---git-common-dir : /repo/.git                          -> the main checkout's stack
---git-path       : /repo/.git/worktrees/wt/gh-stack    -> this worktree's stack
-```
-
-Both files can exist at once, so `--git-common-dir` does not fail loudly; it silently returns
-a different stack. Related paths: `git rev-parse --git-path gh-stack.lock` and
-`git rev-parse --git-path gh-stack-rebase-state`.
+v0.2.0 migrated older per-worktree state files into the shared one automatically and kept
+backups. A conflicting pair stops with guidance instead of merging.
 
 ### Schema
 
@@ -336,7 +362,7 @@ a different stack. Related paths: `git rev-parse --git-path gh-stack.lock` and
 ### Recipes
 
 ```bash
-f=$(git rev-parse --git-path gh-stack)
+f="$(git rev-parse --git-common-dir)/gh-stack"
 
 # Every stack, bottom to top
 jq -r '.stacks[] | "trunk=\(.trunk.branch): " + ([.branches[].branch] | join(" <- "))' "$f"
@@ -351,31 +377,30 @@ jq -r --arg b "$cur" '
   . as $s | ([$s.branches[].branch] | index($b)) as $i |
   if $i == 0 then $s.trunk.branch else $s.branches[$i-1].branch end' "$f"
 
-# Does this git-dir track any stack at all?
+# Does this repository track any stack at all?
 test -f "$f" && jq -e '.stacks | length > 0' "$f" >/dev/null
 ```
 
 ---
 
-## Push atomicity differs between `push` and `sync`
+## Push atomicity
 
-As of v0.1.0 the two commands document different push semantics. Both statements below are
-current.
+Since v0.3.0, `push`, `sync`, and `submit` push every branch in one atomic
+`--force-with-lease` update. Either every branch moves or none does. v0.1.0 documented
+`push` and `submit` as non-atomic, so older notes and transcripts describe partial pushes.
 
-| Command | Documented behaviour |
+| Setting | Behaviour |
 |---|---|
-| `gh stack push` | "Uses explicit per-branch `--force-with-lease` checks. Updates are not atomic: a branch may update even if another branch is rejected. Fix the rejected branch and run the command again; branches already updated will be unchanged." |
-| `gh stack sync` | "Pushes all branches atomically (using `--force-with-lease --atomic`)" |
+| Default | Atomic. A rejected lease on one branch rejects the whole push |
+| `--no-atomic` or `GH_STACK_NO_ATOMIC=1` | Per-branch. One branch can update while another is rejected |
 
 Consequences:
 
-- A failed `gh stack push` can leave the remote **partially updated**. Rerun after fixing the
-  rejected branch; branches that already succeeded are unchanged.
-- Do not assume a failed `push` left the remote untouched, and do not generalise `sync`'s
-  atomicity to `push`.
-- `submit` is also documented as not atomic: a later rejected push leaves earlier pushes and
-  PR updates in place.
-- Both skip merged and queued branches.
+- A failed default push leaves the remote branches untouched. Rerun after you fix the cause.
+- **`submit`'s PR updates are still not atomic.** If the push succeeds and a later PR step
+  fails, some PRs can be created or retargeted and others not. Rerun the same command.
+- If the user has `GH_STACK_NO_ATOMIC` set, the old partial-push behaviour applies.
+- All three skip merged and queued branches.
 - UNVERIFIED: the exact rejection text when a `--force-with-lease` check fails. Reproducing it
   needs a live remote.
 
@@ -386,8 +411,11 @@ Consequences:
 Mutating commands take an advisory `flock` on a zero-byte lock file beside the state file:
 
 ```bash
-git rev-parse --git-path gh-stack.lock
+echo "$(git rev-parse --git-common-dir)/gh-stack.lock"
 ```
+
+v0.2.0 added a second zero-byte file, `gh-stack-operation.lock`, in the same directory. The
+same rules apply to it.
 
 Observed with the lock held by another process:
 

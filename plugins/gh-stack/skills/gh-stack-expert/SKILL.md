@@ -6,9 +6,12 @@ description: Drive GitHub's native stacked pull requests via the `gh stack` exte
 # Driving `gh stack` as an agent
 
 `gh stack` is a **gh extension** (`github/gh-stack`), not part of gh core. Upgrading gh does
-not upgrade it. Everything here was verified against **v0.1.0**.
+not upgrade it. Everything here was verified against **v0.1.0**. The worktree behavior, the
+dirty-tree rule, the exit-0 and `add -m` rules, and the rerere notes were re-verified on
+**v0.3.0**. The base-change and upgrade-notifier rules come from the v0.3.0 `--help` and
+release notes, and were not reproduced.
 
-GitHub publishes an exhaustive 891-line official skill for this tool
+GitHub publishes an official skill for this tool, a compact core plus references
 (`gh skill install github/gh-stack --agent claude-code --scope user`). It is good and it owns
 the mechanics. This skill is deliberately smaller and covers what GitHub structurally cannot
 know: your machine, your permissions, and a set of behaviours their skill gets wrong.
@@ -62,9 +65,18 @@ When one of these is the right next step, do the preparation and then hand it ov
 exactly what would happen, print the precise command, and let the user run it. Everything up
 to the remote write is yours; the remote write is theirs.
 
+**Never pass `--accept-base-change`.** When GitHub retargets a stack because its base branch
+was deleted, `rebase` and `sync` follow the new base. If the old base never merged, following
+it drops that base's commits from every branch, and the flag skips the confirmation. If a
+rebase reports a base change, stop and tell the user which base moved and whether it merged.
+
 **Sandbox:** `gh` is handled through `sandbox.excludedCommands`. Do not pass
 `dangerouslyDisableSandbox` for it. Note that `gh stack`'s local operations (`init`, `add`,
-`view --json`, `rebase`, navigation) are fully offline and need no network at all.
+`view --json`, `rebase --no-trunk`, navigation) are fully offline and need no network at all.
+
+Since v0.2.0 every `gh stack` call can start a background upgrade check against GitHub, at
+most once a day. It never changes stdout or exit codes. Set `GH_STACK_NO_UPDATE_NOTIFIER=1`
+to stop it, for example in a sandboxed command that has no network.
 
 ## `gh stack merge` is the sharpest edge in the tool
 
@@ -82,36 +94,32 @@ Read this before ever invoking it:
 Treat it exactly like `git push`. When the user asks to land a stack, resolve and echo the
 scope (which PRs, which method) and get confirmation, because the command will not ask.
 
-## Worktrees: stack state is private to the git dir
+## Worktrees
 
-**This is the failure you are most likely to hit and least likely to diagnose.**
+Since v0.2.0 all stack state lives in the **common** git dir, and every worktree shares it.
+A stack created in one checkout is visible from all of them, and `view --json` works from
+any linked worktree. `rebase`, `sync`, and `modify` run each branch's change in the
+checkout that holds that branch.
 
-`gh stack` stores state in a file named `gh-stack` inside the git dir. In a linked worktree
-that is `.git/worktrees/<name>/`, not the shared `.git/`. So a stack created in the main
-checkout is invisible from a worktree and vice versa, and the symptom is misleading:
-
-```
-$ gh stack view --json     # in a worktree, on a branch that IS in a stack
-✗ current branch "feat-one" is not part of a stack     exit=2
-```
-
-Two traps around the fix:
-
-- **`git rev-parse --git-path gh-stack` is wrong.** It resolves into the worktree's own
-  gitdir, because git redirects only a fixed allowlist of known filenames to the common dir
-  and `gh-stack` is not on it. Use `git rev-parse --git-common-dir` explicitly.
-- **`GIT_DIR=$(git rev-parse --git-common-dir) gh stack ...` is dangerous.** It reports the
-  *primary checkout's* current branch while you sit in the worktree on a different one. An
-  agent that "fixes" it this way will operate on the wrong tree.
-
-The correct fix, which the user should run (it writes into `.git/`):
-
-```bash
-ln -s "$(git rev-parse --git-common-dir)/gh-stack" "$(git rev-parse --git-dir)/gh-stack"
-```
-
-This restores **visibility, not full operability**. Branches checked out in another worktree
-still cannot be navigated to (`fatal: 'feat-two' is already used by worktree at ...`).
+- **Never symlink `gh-stack` into a worktree's private git dir.** Older guidance said to do
+  this. On v0.2.0 and later, the symlink breaks `gh stack` in that worktree.
+- **Never use `GIT_DIR=... gh stack`.** It reports the primary checkout's current branch
+  while you sit in a different worktree.
+- **To read the state file directly, use `git rev-parse --git-common-dir`.** Do not use
+  `--git-path gh-stack`. It resolves into the worktree's private git dir, where nothing is.
+- **A branch checked out in another worktree cannot be navigated to.** `gh stack bottom`
+  exits **5** with `Branch "<b>" is already checked out in another worktree` and prints a
+  `cd <path>` hint, and your checkout does not change. Expect the same from the other
+  navigation commands. `gh stack checkout <target> --print-path` prints that path without
+  moving.
+- **A rebase conflict lands in the worktree that holds the branch.** It is not necessarily
+  your worktree. stderr names it on a `Conflict worktree: <path>` line. Resolve and stage
+  in that worktree. `--continue` and `--abort` work from any worktree.
+- **During that conflict, `view --json` from another worktree exits 0 and looks normal.**
+  Only the conflicted worktree fails. Check for
+  `"$(git rev-parse --git-common-dir)/gh-stack-rebase-state"` before you start a rebase.
+- gh-stack never creates, removes, or stashes worktrees. Cross-worktree operations require
+  Git 2.36 or later.
 
 ## The core loop
 
@@ -126,9 +134,11 @@ gh stack add next-layer
 *not created*. If that error scrolls past, every position assumption afterwards is off by one.
 Stage explicitly first, or pass `-A`/`-u` deliberately.
 
-**A dirty working tree is never a gate.** Nothing in `gh stack` refuses one. Uncommitted
-changes follow you across `up`/`down`/`checkout`/`add`, and `gh stack rebase` will cascade
-across multiple branches with a dirty tree and exit 0. Commit or stash before navigating.
+**A dirty working tree gates only `rebase`.** Since v0.3.0 `gh stack rebase` refuses any
+modified, staged, or untracked file in every worktree it touches, with exit 1. Nothing
+else checks. Uncommitted changes follow you across `up`/`down`/`checkout`/`add`, unless
+git refuses the checkout because a change would be overwritten. Commit or stash before
+navigating.
 
 ### Review feedback on a mid-stack PR
 
@@ -196,14 +206,14 @@ gh stack --help                     # does the subcommand you want actually exis
 ```
 
 and, if GitHub's official skill is installed, whether its `metadata.version` matches the
-installed extension. It currently pins 0.0.9 while the extension is 0.1.0, so for the first
-time the skill describes an *older* version than what is installed. Nothing warns about this.
+installed extension. The v0.3.0 release ships a skill that pins 0.2.0, so it describes an
+older version than what is installed. Nothing warns about this.
 
-Known upstream-skill inaccuracies as of extension v0.1.0: it claims `init` auto-enables
-`rerere` (it does not by itself, though the user's global config often does), it claims
-`view --short` is unusable by agents (it exits 0 fine), it lists exit 7 for "rebase already
-in progress" (unreachable; the detached-HEAD check returns 2 first), and it misquotes the
-exit-5 message.
+Known upstream-skill inaccuracies as of extension v0.3.0: it claims `init` enables `rerere`
+(without a terminal it does not, though the user's global config often does), and it quotes
+the exit-5 message as "on top of the stack" (the binary says "to the top"). Its exit 7 for
+"rebase already in progress" is accurate only from a worktree other than the conflicted
+one. In the conflicted worktree, `rebase` returns 2.
 
 ## Reference files
 

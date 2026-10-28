@@ -22,11 +22,14 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gh_stack_status.py" --strict --for submit
 ```
 
 Exit 2 means blockers apply. Report them with their `fix` lines and stop. Do not clear them
-silently: the common ones are a dirty working tree, a branch needing a rebase, and PR base
-drift, and each one changes what would be submitted.
+silently: the common ones are a dirty working tree and a branch needing a rebase, and each
+one changes what would be submitted.
 
-Local fixes are yours to offer (`gh stack rebase --upstack` is local and rewrites only local
-branches). Anything that touches the remote is not.
+`PR_BASE_DRIFT` is the exception. Only `submit` reconciles PR bases, so do not stop on it.
+List each base that will change in the plan below, and let the user decide.
+
+Local fixes are yours to offer. `gh stack rebase --no-trunk` makes no network calls and
+rewrites only local branches. Anything that touches the remote is not yours.
 
 ### 2. Resolve the plan
 
@@ -52,10 +55,11 @@ Say plainly that they need to run it, and why: it pushes to the remote, which is
 authorize. Do not run it, do not offer to run it, and do not suggest a variant that would
 evade the restriction.
 
-Mention one property they should know before running it: **submit is not atomic.** It pushes
-branches individually, so a partial failure can leave some branches updated and others not,
-with PR bases pointing at branches that did not move. The fix is to re-run the same command,
-not to escalate to a force push.
+Mention one property they should know before running it: **the branch push is atomic, but
+the PR updates are not.** Either every branch moves or none does. After the push, a failure
+can leave some PRs created or retargeted and others not. The fix is to re-run the same
+command, not to escalate to a force push. If `GH_STACK_NO_ATOMIC` is set in their
+environment, the push is per-branch, so one branch can update while another is rejected.
 
 ### 4. Offer to verify afterwards
 

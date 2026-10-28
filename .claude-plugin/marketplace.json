@@ -19,8 +19,8 @@
     {
       "name": "gh-stack",
       "source": "./plugins/gh-stack",
-      "description": "Drive GitHub's native stacked pull requests (the github/gh-stack extension) as a non-interactive agent. Covers the JSON state model, worktree-private state, the never-run list, and recovery from rebase conflicts.",
-      "version": "0.1.1",
+      "description": "Drive GitHub's native stacked pull requests (the github/gh-stack extension) as a non-interactive agent. Covers the JSON state model, worktree behavior, the never-run list, and recovery from rebase conflicts.",
+      "version": "0.2.0",
       "keywords": ["gh-stack", "stacked-prs", "github", "gh-cli", "workflow"]
     },
     {

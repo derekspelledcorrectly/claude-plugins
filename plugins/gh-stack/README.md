@@ -8,13 +8,13 @@ non-interactive agent session.
 | Command | Purpose |
 |---------|---------|
 | `/gh-stack:status [operation]` | Show the stack, PR state, and anything blocking the next operation |
-| `/gh-stack:doctor` | Diagnose the environment: extension version, worktree visibility, remotes, rerere, skill drift |
+| `/gh-stack:doctor` | Diagnose the environment: extension version, worktree state, remotes, rerere, skill drift |
 | `/gh-stack:submit [flags]` | Preflight, resolve the PR plan, and hand you the exact submit command to run |
 
 ## Skill
 
 `gh-stack-expert` covers the operational core plus the things GitHub's own skill cannot
-know: worktree-private state, the permission wall around pushing, the sandbox rule, the
+know: worktree behavior, the permission wall around pushing, the sandbox rule, the
 never-run list, and version drift.
 
 ## Script
@@ -34,18 +34,22 @@ answer before acting:
 
 - **Parentage.** `base` is a commit SHA, not a branch name. The parent is recoverable only
   from array order, which is the reverse of the order `--short` prints.
-- **Heads.** The `head` key is `omitempty` and, as of v0.1.0, is not emitted at all. The
-  script resolves heads with `git rev-parse` instead of trusting the key.
+- **Heads.** The `head` key is `omitempty`. It is absent after `init` and `add` until a
+  rebase records it. The script resolves heads with `git rev-parse` instead of trusting
+  the key.
 - **Identity.** Sitting on trunk is a valid state in which no branch reports `isCurrent`.
   Off-stack and detached HEAD both exit 2 with different messages.
-- **Visibility.** In a linked worktree, `gh stack view --json` exits 2 claiming the branch
-  is not part of a stack. The script falls back to the state file in the *common* git dir
-  and reports the whole stack correctly, plus the fix.
-- **Safety.** Nothing in `gh stack` refuses a dirty working tree.
+- **Ambiguity.** On a trunk shared by two stacks, `gh stack view --json` exits 6 and names
+  neither. The script reads the state file in the *common* git dir and names the
+  candidate stacks in its error.
+- **Safety.** `gh stack rebase` refuses a dirty tree only when it runs, and navigation
+  does not check at all. A rebase stopped in another worktree is invisible to
+  `view --json`. The script reports both as blockers before you act. It checks
+  dirtiness in the current worktree only; gh still refuses a dirty one elsewhere.
 
 ## Relationship to GitHub's official skill
 
-GitHub publishes an exhaustive 891-line skill for this tool:
+GitHub publishes an official skill for this tool:
 
 ```bash
 gh skill install github/gh-stack --agent claude-code --scope user
@@ -58,7 +62,8 @@ stays deliberately smaller, and documents where upstream is currently wrong.
 
 ## Dependencies
 
-- `gh` with the `github/gh-stack` extension. Verified against **v0.1.0**.
+- `gh` with the `github/gh-stack` extension. Verified against **v0.3.0**. Worktree support
+  needs v0.2.0 or later and Git 2.36 or later.
 - Python 3 (stdlib only).
 - `gh extension upgrade stack` is a **user** action; agents cannot install extensions here.
 
