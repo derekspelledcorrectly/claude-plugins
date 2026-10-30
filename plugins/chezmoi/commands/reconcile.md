@@ -7,9 +7,7 @@ Usage:
 
 ---
 
-First, activate the chezmoi skill for full context:
-
-/chezmoi
+First, load the `chezmoi:chezmoi-expert` skill with the Skill tool for full context.
 
 Then follow this workflow precisely:
 
@@ -52,8 +50,8 @@ The reconcile-status.sh script tags each drifted file as `[TEMPLATE]` or plain. 
 
 Always show the diff first so the user can make an informed decision.
 
-**Reading the diff correctly:** See the chezmoi skill's "WARNING: Reading
-`chezmoi diff` output correctly" section for the full reference. The short
+**Reading the diff correctly:** See the `chezmoi-expert` skill's "Reading Chezmoi
+Diffs Correctly" section for the full reference. The short
 version: **minus = on disk, plus = from template.**
 
 - `-` lines = what's currently **on disk** (the live/target file)
